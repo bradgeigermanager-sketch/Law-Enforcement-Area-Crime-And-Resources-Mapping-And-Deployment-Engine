@@ -1,0 +1,164 @@
+Here is the updated, unified UI and Numeracy Engine written in Python using streamlit.
+This version integrates two new analytical panels: a Statistical Estimation Module that utilizes a Poisson distribution to calculate the mathematical probability of a specific number of offenses occurring within a custom time window, and a Historical Trend Comparison Module that tracks trajectory shifts year-over-year.
+## Updated Python UI Engine (app.py)
+Run pip install streamlit pandas plotly scipy numpy to install the requirements before launching the engine via streamlit run app.py.
+
+import streamlit as stimport pandas as pdimport numpy as npimport plotly.express as pximport plotly.graph_objects as gofrom scipy import stats
+# 1. Mock Data Generator tracking multi-year legal trends
+@st.cache_datadef load_mock_legal_data():
+    np.random.seed(42)
+    categories = ['Property', 'Violent', 'Cyber', 'Statutory/Regulatory']
+    statutes = {
+        'Property': ['Larceny-Theft', 'Burglary', 'Motor Vehicle Theft', 'Fraud'],
+        'Violent': ['Aggravated Assault', 'Robbery', 'Homicide'],
+        'Cyber': ['Identity Theft', 'Phishing Networks', 'Ransomware Deployment'],
+        'Statutory/Regulatory': ['Traffic Infractions', 'Tax Evasion', 'Licensing Violations']
+    }
+    
+    data = []
+    # Generates 5 years of historical baseline trends up to 2026
+    for year in range(2022, 2027):
+        for cat in categories:
+            for stat in statutes[cat]:
+                if cat == 'Property':
+                    base = np.random.randint(8000, 15000)
+                elif cat == 'Statutory/Regulatory':
+                    base = np.random.randint(12000, 20000)
+                elif cat == 'Cyber':
+                    base = np.random.randint(3000, 7000) + (year - 2022) * 1500 # Simulating structural upward shift
+                else: 
+                    base = np.random.randint(1500, 4500)
+                
+                data.append({
+                    "Year": year,
+                    "Statute": stat,
+                    "Category": cat,
+                    "Charges Filed": int(base * np.random.uniform(0.85, 1.15))
+                })
+    return pd.DataFrame(data)
+# App Core Configuration
+st.set_page_config(page_title="Statute Numeracy & Predictive Engine", layout="wide")
+st.title("⚖️ Legal Statute Numeracy & Estimation Engine")
+st.markdown("Analyze baseline deviations, historical trajectories, and predictive statistical models across legal statutes.")
+df = load_mock_legal_data()
+# Global Controls Sidebar
+st.sidebar.header("Global Core Matrices")selected_year = st.sidebar.selectbox("Active Analysis Year", sorted(df['Year'].unique(), reverse=True), index=0)population = st.sidebar.number_input("Jurisdiction Population", min_value=10000, max_value=50000000, value=1000000, step=50000)
+# Build out baseline filtered frameyear_df = df[df['Year'] == selected_year].copy()total_charges = year_df['Charges Filed'].sum()
+year_df['Rate per 100k'] = (year_df['Charges Filed'] / population) * 100000
+year_df['Z-Score'] = stats.zscore(year_df['Charges Filed'])
+# Tabbed Interface Layouttab1, tab2, tab3 = st.tabs([
+    "📊 Current Distribution Matrix", 
+    "📈 Historical Trend Comparisons", 
+    "🔮 Statistical Estimation (Predictive)"
+])
+# ==========================================# TAB 1: CURRENT DISTRIBUTION MATRIX# ==========================================with tab1:
+    st.header(f"Volumetric Diagnostics for {selected_year}")
+    
+    kpi1, kpi2, kpi3 = st.columns(3)
+    kpi1.metric("Total Documented Charges", f"{total_charges:,}")
+    kpi2.metric("Gross Volumetric Average", f"{int(year_df['Charges Filed'].mean()):,} / statute")
+    kpi3.metric("Highest Incident Category", year_df.groupby('Category')['Charges Filed'].sum().idxmax())
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        cat_df = year_df.groupby('Category')['Charges Filed'].sum().reset_index()
+        fig_pie = px.pie(cat_df, values='Charges Filed', names='Category', hole=0.4, title="Proportional System Load")
+        st.plotly_chart(fig_pie, use_container_width=True)
+        
+    with col2:
+        fig_z = px.bar(year_df, x='Statute', y='Z-Score', color='Category', title="Statutory Deviations from the Mean (Anomalies)")
+        fig_z.add_hline(y=1.96, line_dash="dash", line_color="red", annotation_text="Significantly High (+1.96σ)")
+        fig_z.add_hline(y=-1.96, line_dash="dash", line_color="blue", annotation_text="Significantly Low (-1.96σ)")
+        st.plotly_chart(fig_z, use_container_width=True)
+# ==========================================# TAB 2: HISTORICAL TREND COMPARISONS# ==========================================with tab2:
+    st.header("Multi-Year Longitudinal Trajectory Tracking")
+    st.markdown("Track the evolutionary frequency of offenses across distinct historical reporting frames.")
+    
+    # Selection Matrix
+    all_statutes = sorted(df['Statute'].unique())
+    selected_trend_statutes = st.multiselect("Select Statutes to Track Over Time", all_statutes, default=all_statutes[:3])
+    
+    if selected_trend_statutes:
+        trend_df = df[df['Statute'].isin(selected_trend_statutes)].copy()
+        
+        # Calculate Year-over-Year (YoY) Percentage Shifts
+        trend_df = trend_df.sort_values(['Statute', 'Year'])
+        trend_df['YoY Shift %'] = trend_df.groupby('Statute')['Charges Filed'].pct_change() * 100
+        
+        # Chart 1: Absolute Historical Trajectories
+        fig_trend = px.line(trend_df, x='Year', y='Charges Filed', color='Statute', markers=True,
+                            title="Absolute Charge Quantities Across Timeline",
+                            labels={'Charges Filed': 'Documented Filings'})
+        st.plotly_chart(fig_trend, use_container_width=True)
+        
+        # Chart 2: YoY Acceleration/Deceleration Rates
+        st.subheader("Velocity of Change (Year-over-Year Percentage Shifts)")
+        fig_yoy = px.bar(trend_df.dropna(subset=['YoY Shift %']), x='Year', y='YoY Shift %', color='Statute', barmode='group',
+                         title="Rate of Acceleration / Deceleration by Statute Code",
+                         labels={'YoY Shift %': 'Percentage Growth / Decay (%)'})
+        st.plotly_chart(fig_yoy, use_container_width=True)
+    else:
+        st.warning("Please select at least one statutory code from the matrix dropdown above to generate historical trendlines.")
+# ==========================================# TAB 3: STATISTICAL ESTIMATION (PREDICTIVE)# ==========================================with tab3:
+    st.header("Poisson Event Probability & Estimation Module")
+    st.markdown("Because criminal offenses arrive independently and at a known average rate, we can apply a **Poisson Distribution** model to calculate arrival probabilities over any given timeframe.")
+    
+    # 1. Parameter Settings for Estimation Block
+    col_param1, col_param2, col_param3 = st.columns(3)
+    with col_param1:
+        target_statute = st.selectbox("Select Target Statute for Predictive Modeling", sorted(year_df['Statute'].unique()))
+    with col_param2:
+        time_window = st.selectbox("Define Operational Time Window", ["Daily", "Weekly", "Monthly"])
+    with col_param3:
+        n_events = st.number_input("Target Volume Threshold to Evaluate (k events)", min_value=0, value=25)
+        
+    # Extract annual count to build out arrival rate lambda
+    annual_count = year_df[year_df['Statute'] == target_statute]['Charges Filed'].values[0]
+    
+    # Time-window denominator adjustment
+    time_denominators = {"Daily": 365, "Weekly": 52, "Monthly": 12}
+    denom = time_denominators[time_window]
+    
+    # Lambda = average rate of occurrences per selected time window
+    lam = annual_count / denom
+    
+    # 2. Probability Computation Engines
+    prob_exact = stats.poisson.pmf(n_events, lam) * 100
+    prob_less_equal = stats.poisson.cdf(n_events, lam) * 100
+    prob_greater = (1 - stats.poisson.cdf(n_events, lam)) * 100
+    
+    # Results Visual Display Block
+    st.subheader(f"Predictive Insights Matrix: {target_statute}")
+    st.info(f"**Baseline Parameter:** Historically, this system records an average of **{lam:.2f}** charges of *{target_statute}* per **{time_window.lower()}** window.")
+    
+    est_kpi1, est_kpi2, est_kpi3 = st.columns(3)
+    est_kpi1.metric(f"Probability of EXACTLY {n_events} Crimes", f"{prob_exact:.3f}%")
+    est_kpi2.metric(f"Probability of ≤ {n_events} Crimes", f"{prob_less_equal:.2f}%")
+    est_kpi3.metric(f"Probability of MORE THAN {n_events} Crimes", f"{prob_greater:.2f}%")
+    
+    # 3. Probability Mass Function Distribution Graphing
+    # Generate an evaluation array spanning from 0 to twice the expected lambda value
+    x_axis = np.arange(0, max(int(lam * 2.5), n_events + 10))
+    pmf_values = stats.poisson.pmf(x_axis, lam)
+    
+    dist_df = pd.DataFrame({'Events (k)': x_axis, 'Probability': pmf_values})
+    
+    fig_dist = px.bar(dist_df, x='Events (k)', y='Probability', title=f"Poisson Probability Distribution Curve for {target_statute} ({time_window})",
+                      labels={'Probability': 'Likelihood of Occurrence (Proportion)'})
+    
+    # Add an indicator line showing the user's evaluated target volume threshold
+    fig_dist.add_vline(x=n_events, line_width=3, line_dash="dash", line_color="orange", 
+                       annotation_text=f" Target Threshold: {n_events}")
+    
+    st.plotly_chart(fig_dist, use_container_width=True)
+
+## Architectural Breakdown of New Modules
+
+* Longitudinal Data Matching (Tab 2): The visualization system handles multidimensional scaling by computing historical parameters over multiple sequential years. It automatically maps lines using plotly.express.line while concurrently computing and indexing Year-over-Year growth/decay velocities via pandas .pct_change().
+* Poisson Probability Engine (Tab 3): Criminal activity acts mathematically as an arrival process. If crimes happen independently at a known constant rate ($\lambda$), the system calculates the explicit probability of seeing $k$ occurrences in a time unit:
+$$\text{P}(X = k) = \frac{\lambda^k e^{-\lambda}}{k!}$$ 
+The UI applies scipy.stats.poisson to compute Probability Mass Functions (pmf) and Cumulative Distribution Functions (cdf) to generate exact risk vectors.
+
+Would you like to integrate a Machine Learning regression module to predict future baselines based on historical acceleration, or expand the data schema to support location tracking for geospatial crime mapping?
+
+
