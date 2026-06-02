@@ -1,0 +1,169 @@
+To integrate enterprise scale data collection with physical hardware networks, the system must bridge the gap between abstract storage assets and physical sensing devices. This is achieved by implementing a dual Data-Lake & Sensor-Lake Mapping Framework.
+This extension updates the platform architecture to map Logical Data Lake Buckets (unstructured data stores, indexing properties) and Physical Sensor Lake Arrays (cameras, acoustic arrays, environmental telemetry nodes) using precise coordinate-based perimeters and capabilities-based schemas.
+------------------------------
+## 1. Spatial Database Schema Expansion (PostgreSQL with PostGIS)
+This expanded schema tracks both the digital storage layout (Data Lake) and the physical capture footprint (Sensor Lake), linking them via specialized capability tags and geographic boundaries.
+
+-- Ensure PostGIS spatial indexing is activeCREATE EXTENSION IF NOT EXISTS postgis;
+-- 1. DATA LAKE MATRIX: Tracks storage repositories, cluster regions, and legal scopesCREATE TABLE data_lake_repositories (
+    lake_id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    lake_uuid UUID UNIQUE DEFAULT gen_random_uuid(),
+    storage_provider VARCHAR(50) CHECK (storage_provider IN ('AWS_S3', 'AZURE_BLOB', 'ON_PREM_CEPH', 'LOCAL_RAID')),
+    bucket_name VARCHAR(100) NOT NULL,
+    data_format_type VARCHAR(30) CHECK (data_format_type IN ('PARQUET', 'JSON_L', 'AVRO', 'RAW_BINARY')),
+    -- Spatial Bounding Box: Represents the legal/geopolitical storage jurisdiction boundary
+    geom_storage_boundary GEOMETRY(Polygon, 4326) NOT NULL,
+    -- Capabilities Matrix: Binned array tracking indexed query capacities
+    indexing_capabilities TEXT[] NOT NULL -- e.g., '{"VECTOR_EMBEDDING", "FULL_TEXT", "TEMPORAL_PARTITION"}'
+);
+-- 2. SENSOR LAKE MATRIX: Tracks physical streaming devices and spatial perimetersCREATE TABLE sensor_lake_apparatuses (
+    sensor_id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    sensor_uid VARCHAR(100) UNIQUE NOT NULL, -- e.g., 'CAM-GRID-901'
+    hardware_model VARCHAR(100) NOT NULL,
+    capture_frequency_hz NUMERIC(6,2) DEFAULT 1.00,
+    -- Core Coordinates: Precise installation node location
+    geom_node_location GEOMETRY(Point, 4326) NOT NULL,
+    -- Spatial Perimeter: Computed visibility buffer polygon representing true collection footprint
+    geom_capture_perimeter GEOMETRY(Polygon, 4326) NOT NULL,
+    -- Capabilities Matrix: Binned array tracking physical capture profiles
+    hardware_capabilities TEXT[] NOT NULL -- e.g., '{"NIGHT_VISION", "ANPR_OCR", "ACOUSTIC_TRIANGULATION"}'
+);
+-- 3. PIPELINE BRIDGE LEDGER: Connects Sensor Stream outputs directly to Data Lake ingest targetsCREATE TABLE lake_pipeline_mappings (
+    mapping_id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    sensor_id INT REFERENCES sensor_lake_apparatuses(sensor_id),
+    target_lake_id INT REFERENCES data_lake_repositories(lake_id),
+    ingest_throughput_mb_s NUMERIC(8,2) DEFAULT 0.00,
+    pipeline_state VARCHAR(20) CHECK (pipeline_state IN ('ACTIVE_INGEST', 'THROTTLED', 'STALLED')),
+    last_sync_timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+-- Optimization Matrix IndexesCREATE INDEX idx_datalake_geom ON data_lake_repositories USING GIST(geom_storage_boundary);CREATE INDEX idx_sensorlake_node ON sensor_lake_apparatuses USING GIST(geom_node_location);CREATE INDEX idx_sensorlake_perim ON sensor_lake_apparatuses USING GIST(geom_capture_perimeter);CREATE INDEX idx_sensor_capabilities ON sensor_lake_apparatuses USING GIN(hardware_capabilities);CREATE INDEX idx_lake_capabilities ON data_lake_repositories USING GIN(indexing_capabilities);
+
+------------------------------
+## 2. Full Unified UI Engine with Data/Sensor Lake Mapping
+The updated interactive engine adds a comprehensive Lake Pipeline Orchestrator Portal. It checks for mismatches between physical hardware captures and digital lake ingestion pipelines (e.g., flagging a high-definition Night Vision camera trying to dump raw video into a storage bucket that only supports flat data formats).
+To launch this dashboard, update your app.py script and run streamlit run app.py:
+
+import streamlit as stimport pandas as pdimport numpy as npimport plotly.express as pximport plotly.graph_objects as gofrom sklearn.ensemble import RandomForestRegressorimport json
+# 1. Advanced Structural Lake Architecture Mock Data Generator
+@st.cache_datadef load_enterprise_lake_architecture_data():
+    np.random.seed(42)
+    center_lat, center_lon = 40.7128, -74.0060
+    
+    # Generate Sensor Lake Mock Matrix
+    sensor_lake_nodes = [
+        {"Sensor_UID": "SNS-LAKE-101", "Model": "VisionX-NightHawk", "Lat": 40.7250, "Lon": -73.9980, "Certs": ["NIGHT_VISION", "ANPR_OCR"], "Freq": 30.0},
+        {"Sensor_UID": "SNS-LAKE-102", "Model": "SonicPulse-AudioArray", "Lat": 40.6980, "Lon": -74.0150, "Certs": ["ACOUSTIC_TRIANGULATION"], "Freq": 1000.0},
+        {"Sensor_UID": "SNS-LAKE-103", "Model": "EnviroGuard-IoT", "Lat": 40.7120, "Lon": -74.0450, "Certs": ["THERMAL_IMAGING", "ENVIRONMENTAL_TELEMETRY"], "Freq": 0.1},
+        {"Sensor_UID": "SNS-LAKE-104", "Model": "VisionX-Static", "Lat": 40.7350, "Lon": -74.0250, "Certs": ["ANPR_OCR"], "Freq": 10.0}
+    ]
+    
+    # Generate Data Lake Storage Repository Mock Matrix
+    data_lake_buckets = [
+        {"Lake_ID": "LAKE-S3-BLOB-01", "Provider": "AWS_S3", "Format": "RAW_BINARY", "Capabilities": ["VECTOR_EMBEDDING", "TEMPORAL_PARTITION"], "Bound_Region": "East-Coast Quad"},
+        {"Lake_ID": "LAKE-DB-PARQ-02", "Provider": "ON_PREM_CEPH", "Format": "PARQUET", "Capabilities": ["FULL_TEXT", "TEMPORAL_PARTITION"], "Bound_Region": "Central Warehouse"},
+        {"Lake_ID": "LAKE-LOCAL-CACHE-03", "Provider": "LOCAL_RAID", "Format": "JSON_L", "Capabilities": ["REAL_TIME_INDEXING"], "Bound_Region": "Edge Terminal Node"}
+    ]
+    
+    return pd.DataFrame(sensor_lake_nodes), pd.DataFrame(data_lake_buckets)
+
+st.set_page_config(page_title="Lake Mapping Command Engine", layout="wide")
+st.title("⚖️ Enterprise Data-Lake & Sensor-Lake Mapping Infrastructure")
+st.markdown("Map physical sensor perimeters against cloud-tier data storage schemas using coordinate validation rules.")
+sensor_lake_df, data_lake_df = load_enterprise_lake_architecture_data()
+# Interface Splitter Tabstab_lake_map, tab_ingest_rules = st.tabs(["🗺️ Dual Lake Coordinate Topology Map", "⚙️ Capabilities-Based Ingest Verification"])
+# --------------------------------------------------------# TAB 1: DUAL LAKE COORDINATE TOPOLOGY MAP# --------------------------------------------------------with tab_lake_map:
+    st.header("Spatio-Infrastructure Interface Layer Overlay")
+    st.markdown("This map evaluates physical sensor nodes (**Sensor Lake Capture Points**) alongside localized ingestion zones (**Data Lake Targets**) to track coordinates across your collection footprint.")
+    
+    col_l1, col_l2 = st.columns([3, 1])
+    with col_l1:
+        # Build composite Mapbox overlay
+        fig_lake_map = go.Figure()
+        
+        # Plot physical streaming assets
+        fig_lake_map.add_trace(go.Scattermapbox(
+            lat=sensor_lake_df['Lat'], lon=sensor_lake_df['Lon'],
+            mode='markers',
+            marker=go.scattermapbox.Marker(size=14, color='#00FFCC', symbol='circle'),
+            text=sensor_lake_df['Sensor_UID'] + "<br>Capabilities: " + sensor_lake_df['Certs'].astype(str),
+            name='Sensor-Lake Node Assets'
+        ))
+        
+        fig_lake_map.update_layout(
+            mapbox=dict(style="carto-darkmatter", center=dict(lat=40.7128, lon=-74.0060), zoom=11.2),
+            margin=dict(l=0, r=0, t=10, b=0), height=550, showlegend=True
+        )
+        st.plotly_chart(fig_lake_map, use_container_width=True)
+        
+    with col_l2:
+        st.markdown("### Sensor Lake Registry")
+        st.dataframe(sensor_lake_df[['Sensor_UID', 'Freq']], use_container_width=True, hide_index=True)
+        
+        st.markdown("### Data Lake Buckets")
+        st.dataframe(data_lake_df[['Lake_ID', 'Format']], use_container_width=True, hide_index=True)
+# --------------------------------------------------------# TAB 2: CAPABILITIES-BASED INGEST VERIFICATION# --------------------------------------------------------with tab_ingest_rules:
+    st.header("Pipeline Structural Capability Match Solver")
+    st.markdown("Data capture errors often occur when raw unstructured assets (like high-frequency binary video feeds) are routed into repositories that only accept structured database files. This verification table checks pipeline endpoints against compatibility rules.")
+    
+    # Ingestion Architecture Rule Matrix Mapping Selection UI
+    selected_sensor = st.selectbox("Select Outbound Stream Source Asset (Sensor-Lake Point)", sensor_lake_df['Sensor_UID'].unique())
+    selected_bucket = st.selectbox("Select Ingestion Target Destination Bucket (Data-Lake Node)", data_lake_df['Lake_ID'].unique())
+    
+    # Extract structural configuration properties
+    s_meta = sensor_lake_df[sensor_lake_df['Sensor_UID'] == selected_sensor].iloc[0]
+    b_meta = data_lake_df[data_lake_df['Lake_ID'] == selected_bucket].iloc[0]
+    
+    # Structural Constraint Validation Evaluation Logic Matrix
+    is_compatible = False
+    rule_reason = ""
+    
+    if "NIGHT_VISION" in s_meta['Certs'] or "THERMAL_IMAGING" in s_meta['Certs']:
+        # Heavy binary image streams require raw unstructured bucket data layouts
+        if b_meta['Format'] == "RAW_BINARY":
+            is_compatible = True
+            rule_reason = "VALID ROUTING: Unstructured payload stream matches file ingestion format parameters."
+        else:
+            is_compatible = False
+            rule_reason = "CRITICAL TYPE MISMATCH: High-bandwidth video streams cannot drop into structured database repositories."
+    else:
+        # Numeric or flat logging metrics fit cleanly anywhere
+        is_compatible = True
+        rule_reason = "VALID ROUTING: Flat log parameters matched to multi-format parsing target schema."
+        
+    # Render Structural Pipeline Diagnostics Payload Code Verification Block
+    st.subheader("Data Pipeline Mapping Execution Status")
+    if is_compatible:
+        st.success(rule_reason)
+    else:
+        st.error(rule_reason)
+        
+    pipeline_manifest_packet = {
+        "pipeline_mapping_id": f"MAP-SRC-{selected_sensor[-3:]}-DST-{selected_bucket[-2:]}",
+        "evaluation_timestamp": datetime.utcnow().isoformat() + "Z",
+        "pipeline_link_authorized": is_compatible,
+        "source_sensor_lake_parameters": {
+            "uid": s_meta['Sensor_UID'], "model": s_meta['Model'],
+            "coordinates": {"lat": s_meta['Lat'], "lon": s_meta['Lon']},
+            "ingest_frequency_hz": float(s_meta['Freq']), "output_capabilities": s_meta['Certs']
+        },
+        "destination_data_lake_parameters": {
+            "bucket_id": b_meta['Lake_ID'], "infrastructure_provider": b_meta['Provider'],
+            "expected_file_format": b_meta['Format'], "indexing_capabilities": b_meta['Capabilities'],
+            "geopolitical_storage_region": b_meta['Bound_Region']
+        }
+    }
+    
+    st.markdown("**Generated Pipeline Ingestion Connection Manifest (`JSON`)**")
+    st.code(json.dumps(pipeline_manifest_packet, indent=2), language="json")
+
+------------------------------
+## 3. Core Architectural Principles
+
+* Coordinate-Based Spatial Buffering (Section 1): Instead of manually pairing telemetry points, the system uses spatial coordinates to define relationships. The sensor lake tracks exact capture footprints (geom_capture_perimeter), while the data lake uses geographic perimeters (geom_storage_boundary) to map data storage locations against regional privacy rules and sovereignty requirements.
+* Capabilities-Based Pipeline Ingestion Rules (Section 2): The platform uses explicit validation logic to prevent pipeline ingest failures. Before routing data from a Sensor Lake device to a Data Lake repository, the pipeline rule engine verifies that the target storage format can handle the incoming source stream:
+$$\text{Sensor Output Stream Type} \longrightarrow \text{Valid Data Lake Format Filter Match}$$ 
+This prevents high-frequency binary packet collisions from overwhelming incompatible, text-only storage repositories.
+
+To tailor these data ingest and pipeline mapping matrices for production, let me know if you would like to integrate real-time stream throughput analytics (to calculate data transmission volume in MB/s), add automated structural format converters (like flattening raw video into text-based metadata packets using AI processing models at the edge), or customize the pipeline tracking rules to support high-speed streaming protocols like Apache Kafka or AWS Kinesis.
+
+
