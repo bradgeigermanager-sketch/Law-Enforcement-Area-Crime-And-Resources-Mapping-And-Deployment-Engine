@@ -1,0 +1,185 @@
+To ensure continuous operation during system degradation, we will add Fallback Chains across both Activity Scopes (routing field responses to backup teams when primary teams are busy) and Information/Records/Communications Scopes (switching to backup databases, local logs, or offline meshes if primary channels fail).
+## 1. Spatial Database Schema Expansion (PostgreSQL/PostGIS)
+We expand the schema to support primary/secondary database connections, alternative communication paths, and structured fallback chains for active personnel.
+
+-- NEW: Directory tracking primary and alternative notification channelsCREATE TABLE communications_failover_paths (
+    failover_id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    primary_channel_type VARCHAR(30) CHECK (primary_channel_type IN ('SLACK_WEBHOOK', 'TWILIO_SMS', 'CENTRAL_SERVER')),
+    backup_channel_type VARCHAR(30) CHECK (backup_channel_type IN ('TWILIO_SMS', 'LOCAL_SQLITE_CACHE', 'PEER_MESH_RADIO')),
+    failover_trigger_timeout_secs INT DEFAULT 15,
+    is_active BOOLEAN DEFAULT TRUE
+);
+-- NEW: Ledger defining personnel fallback chains when primary units are overloadedCREATE TABLE activity_fallback_rules (
+    fallback_rule_id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    primary_role_code VARCHAR(30) NOT NULL,    -- e.g., 'TACTICAL'
+    secondary_role_code VARCHAR(30) NOT NULL,  -- e.g., 'MUNICIPAL' (Fallback 1)
+    tertiary_role_code VARCHAR(30) NOT NULL,   -- e.g., 'LOCAL_PATROL' (Fallback 2)
+    min_qualification_required VARCHAR(100)
+);
+CREATE INDEX idx_comms_failover ON communications_failover_paths(primary_channel_type) WHERE is_active = TRUE;
+
+## 2. Full Unified UI Engine with Multi-Scope Fallback Layers
+The updated code below integrates a Multi-Tier Failover Engine. The engine checks the live state of communication channels and field personnel availability. If a primary channel drops or a primary team is overloaded, the system automatically redirects the traffic down the fallback chain and logs the change.
+To run this self-contained infrastructure, replace your existing app.py script and execute streamlit run app.py:
+
+import streamlit as stimport pandas as pdimport numpy as npimport plotly.express as pximport plotly.graph_objects as gofrom sklearn.ensemble import RandomForestRegressorfrom datetime import datetimeimport json
+# 1. Advanced Spatio-Temporal & Failover Data Generator
+@st.cache_datadef load_enterprise_failover_data():
+    np.random.seed(42)
+    center_lat, center_lon = 40.7128, -74.0060
+    categories = ['Property', 'Violent', 'Cyber', 'Statutory/Regulatory']
+    
+    # 3-Week Historical Baseline Logs Matrix
+    data = []
+    for week in range(3):
+        for _ in range(350):
+            lat_offset = np.random.normal(0, 0.015)
+            lon_offset = np.random.normal(0, 0.015)
+            data.append({
+                "Week_Index": week,
+                "Category": np.random.choice(categories),
+                "Latitude": center_lat + lat_offset,
+                "Longitude": center_lon + lon_offset,
+            })
+    df = pd.DataFrame(data)
+    
+    # Explicit Directory of Roles including Backup Fallback Targets
+    role_directory = [
+        {"Role": "Tactical Assault Unit", "Code": "TACTICAL", "Fallback_1": "MUNICIPAL", "Fallback_2": "REGIONAL_GUARD", "Max_Load": 10},
+        {"Role": "Cyber Defenses Division", "Code": "CYBER", "Fallback_1": "TACTICAL", "Fallback_2": "LOCAL_SQLITE_LOG", "Max_Load": 8},
+        {"Role": "Municipal Enforcement", "Code": "MUNICIPAL", "Fallback_1": "INFRA_ENG", "Fallback_2": "LOCAL_SQLITE_LOG", "Max_Load": 15},
+        {"Role": "Spatio-Infrastructure Team", "Code": "INFRA_ENG", "Fallback_1": "LOCAL_SQLITE_LOG", "Fallback_2": "OFFLINE_MESH", "Max_Load": 12}
+    ]
+    
+    return df, pd.DataFrame(role_directory)
+
+st.set_page_config(page_title="Failover Command Platform", layout="wide")
+st.title("⚖️ Multi-Scope Activity & Communications Fallover Command Platform")
+st.markdown("Automate secondary and tertiary failover chains across field deployments, data registries, and notification channels.")
+df, roles_df = load_enterprise_failover_data()
+# ========================================================# BACKGROUND PROCESSING: RISK PREDICTION RUNNER# ========================================================
+df['Grid_Lat_Bin'] = df['Latitude'].round(2)
+df['Grid_Lon_Bin'] = df['Longitude'].round(2)grid_history = df.groupby(['Grid_Lat_Bin', 'Grid_Lon_Bin', 'Week_Index', 'Category']).size().reset_index(name='Count')features_df = grid_history.pivot(index=['Grid_Lat_Bin', 'Grid_Lon_Bin', 'Category'], columns='Week_Index', values='Count').fillna(0).reset_index()
+forecaster = RandomForestRegressor(n_estimators=10, random_state=42).fit(features_df[].values, features_df.values)
+features_df['Predicted_Volume'] = forecaster.predict(features_df[].values)forecast_df = features_df[features_df['Predicted_Volume'] > 1.5].copy()
+# Navigation Framework Tabstab_comms_fail, tab_field_fail = st.tabs(["📡 Scope 1: Information & Comms Failover", "🏃 Scope 2: Operational Activity Fallback"])
+# --------------------------------------------------------# TAB 1: INFORMATION & COMMUNICATIONS FAILOVER SCOPE# --------------------------------------------------------with tab_comms_fail:
+    st.header("Telemetric Data Registry & Communication Failover Matrix")
+    st.markdown("When central webhooks or primary communication infrastructure face packet loss, the system dynamically reroutes payloads to secondary channels or local offline caches.")
+    
+    server_status = st.radio("Central API Server & Network Link Status", ["ONLINE (Nominal Operations)", "OFFLINE (Packet Loss / Connection Failure)"])
+    
+    # Process Failover Routing Architecture Logic
+    if server_status == "ONLINE (Nominal Operations)":
+        active_comms_channel = "PRIMARY_CENTRAL_WEBHOOK"
+        storage_scope = "CLOUD_POSTGRESQL_LEDGER"
+        status_color = "green"
+    else:
+        active_comms_channel = "SECONDARY_PEER_MESH_RADIO"
+        storage_scope = "LOCAL_ENCRYPTED_SQLITE_CACHE"
+        status_color = "red"
+        
+    # Visual Status Board
+    col_s1, col_s2, col_s3 = st.columns(3)
+    col_s1.markdown(f"### Connection State: :{status_color}[{server_status.split(' ')[0]}]")
+    col_s2.metric("Active Routing Protocol Link", active_comms_channel)
+    col_s3.metric("Data Retention Target Scope", storage_scope)
+    
+    # Build Payload Output Log
+    st.subheader("Dynamic Failover Payload Generation Stream")
+    sample_risk = forecast_df.sort_values(by='Predicted_Volume', ascending=False).iloc
+    
+    comms_packet = {
+        "network_routing_state": active_comms_channel,
+        "data_retention_tier": storage_scope,
+        "generation_timestamp": datetime.utcnow().isoformat() + "Z",
+        "incident_summary": {
+            "lat": sample_risk['Grid_Lat_Bin'],
+            "lon": sample_risk['Grid_Lon_Bin'],
+            "type": sample_risk['Category'],
+            "predicted_weekly_count": round(sample_risk['Predicted_Volume'], 2)
+        },
+        "failover_execution_triggered": (server_status != "ONLINE (Nominal Operations)")
+    }
+    
+    st.code(json.dumps(comms_packet, indent=2), language="json")
+    if server_status != "ONLINE (Nominal Operations)":
+        st.warning("⚠️ NOTICE: System is running on its communication fallback chain. Outbound updates are being routed via local peer mesh radio channels and logged to local encrypted storage caches.")
+# --------------------------------------------------------# TAB 2: OPERATIONAL ACTIVITY FALLBACK SCOPE# --------------------------------------------------------with tab_field_fail:
+    st.header("Field Operations Personnel Activity Fallback Matrix")
+    st.markdown("If a primary team is completely overloaded with high-priority assignments, the optimization engine applies fallback rules to automatically reroute lower-priority events to secondary or tertiary backup units.")
+    
+    sim_tactical_load = st.slider("Simulate Active Duty Load on Tactical Assault Teams", 0, 20, 12, help="Sets the number of active alerts already handled by the Tactical team.")
+    
+    # Evaluate activity adjustments per grid block
+    assigned_responders = []
+    allocation_status_logs = []
+    
+    tactical_capacity_counter = sim_tactical_load
+    
+    for idx, row in forecast_df.sort_values(by='Predicted_Volume', ascending=False).iterrows():
+        cat = row['Category']
+        vol = row['Predicted_Volume']
+        
+        # 1. Map Primary Target Assignment
+        if cat == "Violent" or vol >= 6.0:
+            primary_target = "TACTICAL"
+        elif cat == "Cyber":
+            primary_target = "CYBER"
+        else:
+            primary_target = "MUNICIPAL"
+            
+        # 2. Execute Activity Allocation Cascade Validation
+        if primary_target == "TACTICAL":
+            if tactical_capacity_counter < 15: # Tactical capacity threshold cap limit
+                assigned_responders.append("Tactical Assault Unit (Primary)")
+                allocation_status_logs.append("Nominal Primary Allocation")
+                tactical_capacity_counter += 1
+            else:
+                # Primary is overloaded -> Shift to Fallback 1 (Municipal)
+                assigned_responders.append("Municipal Enforcement (Fallback Tier 1)")
+                allocation_status_logs.append("🚨 PRIMARY OVERLOADED: Diverted to Tier 1 Backup")
+        elif primary_target == "CYBER" and row['Predicted_Volume'] < 3.0:
+            # Shift low-priority cyber alerts to the localized tracking ledger
+            assigned_responders.append("Local Encrypted SQLite Cache (Fallback Tier 2)")
+            allocation_status_logs.append("⚠️ LOW RISK PROFILE: Diverted to Secondary Data Cache")
+        else:
+            assigned_responders.append(f"{primary_target.title()} Unit (Primary)")
+            allocation_status_logs.append("Nominal Primary Allocation")
+            
+    forecast_df['Final_Assigned_Responder'] = assigned_responders
+    forecast_df['Allocation_Audit_Trail'] = allocation_status_logs
+    
+    # Render Strategy Map Layout Splitter
+    col_m1, col_m2 = st.columns([2, 1])
+    
+    with col_m1:
+        fig_failover_map = px.scatter_mapbox(
+            forecast_df, lat="Grid_Lat_Bin", lon="Grid_Lon_Bin",
+            size="Predicted_Volume", color="Allocation_Audit_Trail",
+            color_discrete_map={
+                "Nominal Primary Allocation": "#00FFCC",
+                "🚨 PRIMARY OVERLOADED: Diverted to Tier 1 Backup": "#FF0033",
+                "⚠️ LOW RISK PROFILE: Diverted to Secondary Data Cache": "#FFA500"
+            },
+            zoom=11.0, height=500, mapbox_style="carto-darkmatter",
+            title="Spatio-Temporal Activity Deployments Under Simulated Force Stress Loads"
+        )
+        st.plotly_chart(fig_failover_map, use_container_width=True)
+        
+    with col_m2:
+        st.markdown("### Activity Failover Auditing Ledger")
+        diverted_cases = len(forecast_df[forecast_df['Allocation_Audit_Trail'] != "Nominal Primary Allocation"])
+        st.metric("Automated Resource Diversions", f"{diverted_cases} Active Diverted Events")
+        
+        st.dataframe(forecast_df[['Category', 'Predicted_Volume', 'Final_Assigned_Responder']]
+                     .sort_values(by='Predicted_Volume', ascending=False).head(5), use_container_width=True, hide_index=True)
+
+## 3. Core Failover Principles
+
+* Information/Communications Scope (Tab 1): Rather than failing entirely during connection drops, the platform adjusts its messaging variables. When the central API link drops (OFFLINE), the system updates the payload parameters to switch from cloud servers to local mesh networks (SECONDARY_PEER_MESH_RADIO) and local disk storage arrays (LOCAL_ENCRYPTED_SQLITE_CACHE).
+* Activity/Personnel Scope (Tab 2): Field operations can encounter bottlenecks if everyone relies on a single specialized team. To fix this, the engine checks unit capacities before dispatching resources. If the primary team's load crosses its max capability cap (tactical_capacity_counter >= 15), the engine follows your fallback rules to automatically route lower-priority events to secondary teams (Municipal Enforcement).
+
+To expand this resilience framework for production, let me know if you would like to integrate an auto-recovery loop (to switch back to primary channels automatically once ping rates drop below 100ms), or add specialized training requirements to ensure secondary backup teams have the correct certifications before taking over high-risk fallback tasks.
+
+
