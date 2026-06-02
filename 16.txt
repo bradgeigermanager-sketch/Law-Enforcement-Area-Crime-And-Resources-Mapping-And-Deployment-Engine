@@ -1,0 +1,151 @@
+To track, analyze, and compare criminal charges visually, we can build a lightweight, self-contained architecture. This solution includes a relational database schema, a JSON-based data contract, and a fully functional Python-based UI engine using streamlit and plotly to calculate statistical numeracy (like Z-scores and proportions).
+## 1. The Database Schema (SQL)
+This schema tracks jurisdictions, statutory codes, and historical records of filed charges. It uses indexing to optimize high-volume statistical aggregations.
+
+-- Track legal jurisdictions (e.g., Federal, State, Municipal)CREATE TABLE jurisdictions (
+    jurisdiction_id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    name VARCHAR(100) NOT NULL,
+    region VARCHAR(100) NOT NULL,
+    population_baseline INT NOT NULL -- Used for calculating rates per 100k
+);
+-- Track specific statutory violationsCREATE TABLE statutory_codes (
+    statute_id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    code_reference VARCHAR(50) UNIQUE NOT NULL, -- e.g., "18 U.S.C. § 2113"
+    title VARCHAR(255) NOT NULL,
+    category VARCHAR(50) NOT NULL, -- e.g., "Property", "Violent", "Cyber", "Statutory"
+    severity_level VARCHAR(20) CHECK (severity_level IN ('Felony', 'Misdemeanor', 'Infraction'))
+);
+-- Core ledger tracking the frequency of filed charges over timeCREATE TABLE charge_metrics (
+    metric_id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    jurisdiction_id INT REFERENCES jurisdictions(jurisdiction_id),
+    statute_id INT REFERENCES statutory_codes(statute_id),
+    reporting_period_start DATE NOT NULL,
+    reporting_period_end DATE NOT NULL,
+    charge_count INT NOT NULL CHECK (charge_count >= 0),
+    CONSTRAINT unique_period_charge UNIQUE (jurisdiction_id, statute_id, reporting_period_start)
+);
+-- Optimizations for fast statistical queriesCREATE INDEX idx_metrics_lookup ON charge_metrics(reporting_period_start, statute_id);CREATE INDEX idx_statute_category ON statutory_codes(category);
+
+## 2. The Data Exchange Schema (JSON)
+This data payload structuralizes the analytical output from the engine, transforming raw counts into relative statistical insights.
+
+{
+  "$schema": "https://json-schema.org",
+  "title": "ChargeStatisticalSummary",
+  "type": "object",
+  "properties": {
+    "reporting_year": { "type": "integer" },
+    "population_baseline": { "type": "integer" },
+    "metrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "statute_code": { "type": "string" },
+          "category": { "type": "string" },
+          "raw_count": { "type": "integer" },
+          "rate_per_100k": { "type": "number" },
+          "percentage_of_total": { "type": "number" },
+          "z_score_deviation": { "type": "number" }
+        },
+        "required": ["statute_code", "category", "raw_count", "rate_per_100k", "percentage_of_total", "z_score_deviation"]
+      }
+    }
+  },
+  "required": ["reporting_year", "population_baseline", "metrics"]
+}
+
+## 3. The UI & Numeracy Engine (Python Script)
+This single-file solution acts as your data processor and dynamic interface. It handles statistical comparisons, calculates statistical significance ($Z$-scores), and draws interactive visual comparisons.
+To run this engine, install the required packages: pip install streamlit pandas plotly scipy
+
+import streamlit as stimport pandas as pdimport numpy as npimport plotly.express as pximport plotly.graph_objects as gofrom scipy import stats
+# 1. Mock Data Generator matching our database designdef load_mock_legal_data():
+    np.random.seed(42)
+    categories = ['Property', 'Violent', 'Cyber', 'Statutory/Regulatory']
+    statutes = {
+        'Property': ['Larceny-Theft', 'Burglary', 'Motor Vehicle Theft', 'Fraud'],
+        'Violent': ['Aggravated Assault', 'Robbery', 'Homicide'],
+        'Cyber': ['Identity Theft', 'Phishing Networks', 'Ransomware Deployment'],
+        'Statutory/Regulatory': ['Traffic Infractions', 'Tax Evasion', 'Licensing Violations']
+    }
+    
+    data = []
+    # Generate 5 years of historical baseline trends
+    for year in range(2022, 2027):
+        for cat in categories:
+            for stat in statutes[cat]:
+                # Base counts representing typical global distributions
+                if cat == 'Property':
+                    base = np.random.randint(8000, 15000)
+                elif cat == 'Statutory/Regulatory':
+                    base = np.random.randint(12000, 20000)
+                elif cat == 'Cyber':
+                    base = np.random.randint(3000, 7000) + (year - 2022) * 1500 # Simulating an upward trend
+                else: # Violent
+                    base = np.random.randint(1500, 4500)
+                
+                data.append({
+                    "Year": year,
+                    "Statute": stat,
+                    "Category": cat,
+                    "Charges Filed": int(base * np.random.uniform(0.9, 1.1))
+                })
+    return pd.DataFrame(data)
+# 2. Main UI Engine App Configuration
+st.set_page_config(page_title="Legal Statute Numeracy Engine", layout="wide")
+st.title("⚖️ Legal Statute Numeracy & Charge Tracking Engine")
+st.markdown("Analyze baseline deviations, comparative counts, and population-adjusted crime tracking metrics.")
+df = load_mock_legal_data()
+# Sidebar Configuration Controls
+st.sidebar.header("Data Filter Matrix")selected_year = st.sidebar.selectbox("Analysis Target Year", sorted(df['Year'].unique(), reverse=True))population = st.sidebar.number_input("Jurisdiction Population", min_value=10000, max_value=50000000, value=1000000)
+# Filter Dataset based on configurationsyear_df = df[df['Year'] == selected_year].copy()total_charges = year_df['Charges Filed'].sum()
+# 3. Statistical Numeracy Engine Calculations
+year_df['Rate per 100k'] = (year_df['Charges Filed'] / population) * 100000
+year_df['Percentage of Total %'] = (year_df['Charges Filed'] / total_charges) * 100# Calculate Z-Scores to find anomalous statistical spikes
+year_df['Z-Score'] = stats.zscore(year_df['Charges Filed'])
+# Top Level KPI Rowkpi1, kpi2, kpi3 = st.columns(3)
+kpi1.metric("Total Documented Charges", f"{total_charges:,}")
+kpi2.metric("Gross Volumetric Average", f"{int(year_df['Charges Filed'].mean()):,} / statute")
+kpi3.metric("Highest Incident Category", year_df.groupby('Category')['Charges Filed'].sum().idxmax())
+# 4. Interactive Visualizations Block
+st.header(f"Statistical Distributions for Calendar Year {selected_year}")col1, col2 = st.columns(2)
+with col1:
+    st.subheader("Volumetric Distribution by Main Category")
+    cat_df = year_df.groupby('Category')['Charges Filed'].sum().reset_index()
+    fig_pie = px.pie(cat_df, values='Charges Filed', names='Category', hole=0.4,
+                     color_discrete_sequence=px.colors.qualitative.Pastel)
+    st.plotly_chart(fig_pie, use_container_width=True)
+with col2:
+    st.subheader("Statistical Anomalies (Z-Score Deviation Mapping)")
+    # Highlights elements away from the standard historical distribution mean
+    fig_z = px.bar(year_df, x='Statute', y='Z-Score', color='Category',
+                   title="Statutes standard deviations away from the annual norm",
+                   labels={'Z-Score': 'Standard Deviations (Z-Score)'})
+    fig_z.add_hline(y=1.96, line_dash="dash", line_color="red", annotation_text="Significantly High (+1.96σ)")
+    fig_z.add_hline(y=-1.96, line_dash="dash", line_color="blue", annotation_text="Significantly Low (-1.96σ)")
+    st.plotly_chart(fig_z, use_container_width=True)
+# 5. Granular Multi-Statute Comparison Matrix
+st.header("Comparative Cross-Statute Multi-Axis Explorer")selected_statutes = st.multiselect("Select Statutes to Contrast Directly", year_df['Statute'].unique(), 
+                                     default=year_df['Statute'].unique()[:3])
+if selected_statutes:
+    compare_df = year_df[year_df['Statute'].isin(selected_statutes)]
+    
+    fig_comp = go.Figure()
+    fig_comp.add_trace(go.Bar(x=compare_df['Statute'], y=compare_df['Charges Filed'], name='Raw Charges Count', yaxis='y1'))
+    fig_comp.add_trace(go.Scatter(x=compare_df['Statute'], y=compare_df['Rate per 100k'], name='Rate per 100k Pop.', yaxis='y2', line=dict(color='orange', width=3)))
+    
+    fig_comp.update_layout(
+        title="Raw Charge Volume vs Normalized Population Rate",
+        yaxis=dict(title="Raw Charge Field Count"),
+        yaxis2=dict(title="Normalized Rate Per 100k Citizens", overlaying='y', side='right'),
+        legend=dict(x=0.01, y=0.99)
+    )
+    st.plotly_chart(fig_comp, use_container_width=True)
+# 6. Structured Data Ledger Export View
+st.header("Computed Analytical Output Dataset")
+st.dataframe(year_df[['Statute', 'Category', 'Charges Filed', 'Rate per 100k', 'Percentage of Total %', 'Z-Score']].sort_values(by='Charges Filed', ascending=False), use_container_width=True)
+
+Would you like to connect real time-series data pipelines to this engine, add predictive statistical models (like Poisson distributions for estimating future crime probability), or customize the structural UI components?
+
+
