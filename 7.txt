@@ -1,0 +1,208 @@
+To integrate dynamic sensor health trackers and network-based transit time weights, we will expand the platform's core code architecture.
+This update adds a stochastic hardware connectivity degradation loop (simulating real-time signal dropouts) and a Haversine-based network impedance engine that adjusts response times based on distance from your command headquarters.
+## 1. Spatial Database Schema Expansion (PostgreSQL/PostGIS)
+We introduce an explicit logging ledger for hardware signal losses and add distance metrics to our tactical routing table.
+
+-- NEW: Logging matrix tracking sensor heartbeat disruptionsCREATE TABLE sensor_heartbeat_failures (
+    failure_log_id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    sensor_id INT REFERENCES observation_sensors(sensor_id),
+    disruption_type VARCHAR(50) CHECK (disruption_type IN ('Packet_Loss', 'Power_Failure', 'Optics_Occlusion')),
+    logged_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP WITH TIME ZONE
+);
+-- NEW: Tactical route impedance parametersCREATE TABLE precinct_transit_impedance (
+    route_id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    origin_facility_id INT REFERENCES judicial_facilities(facility_id),
+    target_grid_latitude NUMERIC(8,6) NOT NULL,
+    target_grid_longitude NUMERIC(9,6) NOT NULL,
+    base_distance_meters FLOAT NOT NULL,
+    estimated_transit_minutes FLOAT NOT NULL,
+    last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_heartbeat_time ON sensor_heartbeat_failures(logged_at);CREATE INDEX idx_transit_lookup ON precinct_transit_impedance(origin_facility_id, target_grid_latitude, target_grid_longitude);
+
+## 2. Full Integrated UI Engine with Heartbeat Failures & Transit Impedance
+This implementation runs a real-time hardware status simulation alongside a multi-criteria optimization matrix.
+To execute this engine, run the following code via your terminal: streamlit run app.py
+
+import streamlit as stimport pandas as pdimport numpy as npimport plotly.express as pximport plotly.graph_objects as gofrom sklearn.ensemble import RandomForestRegressorfrom scipy.optimize import linprogimport math
+# 1. Advanced Spatio-Temporal, Network Routing & Sensor Health Data Generator
+@st.cache_datadef load_advanced_infrastructure_system_data():
+    np.random.seed(42)
+    center_lat, center_lon = 40.7128, -74.0060
+    hq_lat, hq_lon = 40.6900, -74.0100 # Strategic Dispatch Base Command Node Location
+    
+    # Historical Incident Matrix Generation
+    data = []
+    for week in range(3):
+        for _ in range(400):
+            lat_offset = np.random.normal(0, 0.015)
+            lon_offset = np.random.normal(0, 0.015)
+            data.append({
+                "Week_Index": week,
+                "Latitude": center_lat + lat_offset,
+                "Longitude": center_lon + lon_offset,
+            })
+    df = pd.DataFrame(data)
+    
+    # Hardware Sensor Apparatus Inventory Matrix
+    sensor_types = ['CCTV_Camera', 'ALPR_Scanner', 'Acoustic_IoT']
+    sensors = []
+    for i in range(50):
+        lat_offset = np.random.uniform(-0.03, 0.03)
+        lon_offset = np.random.uniform(-0.03, 0.03)
+        sensors.append({
+            "Sensor_ID": f"SNS-{2000 + i}",
+            "Sensor_Type": np.random.choice(sensor_types),
+            "Latitude": center_lat + lat_offset,
+            "Longitude": center_lon + lon_offset,
+            "Baseline_Status": "Active"
+        })
+    return df, pd.DataFrame(sensors), (hq_lat, hq_lon)
+# Calculate real-world geodesic path distance via the Haversine equationdef calculate_haversine_distance(lat1, lon1, lat2, lon2):
+    R = 6371000 # Radius of earth in meters
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2) * math.sin(dlambda/2)**2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+# Main Frame Initialization
+st.set_page_config(page_title="Dynamic Tactical Command Engine", layout="wide")
+st.title("⚖️ Dynamic Sensor Degradation & Transit-Constrained Optimization Engine")
+st.markdown("Track real-time network dropout simulations alongside road routing response models.")
+df, sensor_df, hq_coords = load_advanced_infrastructure_system_data()
+# ========================================================# MACHINE LEARNING ENGINE FORECAST DATA RUNNER# ========================================================
+df['Grid_Lat_Bin'] = df['Latitude'].round(2)
+df['Grid_Lon_Bin'] = df['Longitude'].round(2)grid_history = df.groupby(['Grid_Lat_Bin', 'Grid_Lon_Bin', 'Week_Index']).size().reset_index(name='Count')features_df = grid_history.pivot(index=['Grid_Lat_Bin', 'Grid_Lon_Bin'], columns='Week_Index', values='Count').fillna(0).reset_index()
+forecaster = RandomForestRegressor(n_estimators=20, random_state=42).fit(features_df[].values, features_df.values)
+features_df['Predicted_Volume'] = forecaster.predict(features_df[].values)forecast_df = features_df[features_df['Predicted_Volume'] > 0.5].copy()
+# Interface Matrix Breakoutstab_health, tab_transit = st.tabs(["⚡ Live Sensor Degradation Tracker", "🚑 Network Transit-Constrained Optimization"])
+# --------------------------------------------------------# TAB 1: LIVE SENSOR DEGRADATION TRACKER# --------------------------------------------------------with tab_health:
+    st.header("Stochastic Hardware Failure Network Simulator")
+    st.markdown("This module injects random network failures into your sensor inventory to simulate real-world connectivity dropouts.")
+    
+    failure_probability = st.slider("Set Network Degradation Factor (Simulated Packet Loss Rate %)", 0, 80, 25, step=5)
+    
+    # Execute Stochastic State Degradation Run
+    np.random.seed(datetime.now().second) # Generate shifting live values based on system clock
+    sensor_df['Current_Status'] = sensor_df['Baseline_Status'].apply(
+        lambda x: 'Offline (Signal Drop)' if np.random.uniform(0, 100) < failure_probability else 'Active'
+    )
+    
+    dropped_units = sensor_df[sensor_df['Current_Status'] == 'Offline (Signal Drop)']
+    
+    h_kpi1, h_kpi2, h_kpi3 = st.columns(3)
+    h_kpi1.metric("Total Infrastructure Inventory Assets", len(sensor_df))
+    h_kpi2.metric("Online Electronic Nodes", len(sensor_df[sensor_df['Current_Status'] == 'Active']))
+    h_kpi3.metric("Simulated Packet Loss Failures", len(dropped_units), delta=f"-{len(dropped_units)} Devices Down", delta_color="inverse")
+    
+    # Recalculate Blind Spots based on real-time degraded network state
+    live_blind_spots = 0
+    blind_spot_labels = []
+    
+    for idx, row in forecast_df.iterrows():
+        dist = np.sqrt((sensor_df['Latitude'] - row['Grid_Lat_Bin'])**2 + (sensor_df['Longitude'] - row['Grid_Lon_Bin'])**2)
+        active_sensors = sensor_df[(dist <= 0.015) & (sensor_df['Current_Status'] == 'Active')]
+        
+        if row['Predicted_Volume'] > 4.0 and len(active_sensors) == 0:
+            live_blind_spots += 1
+            blind_spot_labels.append("CRITICAL DEGRADED BLIND SPOT")
+        else:
+            blind_spot_labels.append("Covered Sector")
+            
+    forecast_df['Live_Observational_Status'] = blind_spot_labels
+    
+    # Render Live Darkmatter Infrastructure Map View
+    fig_health_map = px.scatter_mapbox(
+        sensor_df, lat="Latitude", lon="Longitude", color="Current_Status",
+        color_discrete_map={"Active": "#00FFCC", "Offline (Signal Drop)": "#FF3333"},
+        zoom=11.0, height=500, mapbox_style="carto-darkmatter",
+        title="Real-Time Network Node Vitality Footprint Tracker"
+    )
+    st.plotly_chart(fig_health_map, use_container_width=True)
+# --------------------------------------------------------# TAB 2: NETWORK TRANSIT-CONSTRAINED OPTIMIZATION# --------------------------------------------------------with tab_transit:
+    st.header("Transit Time & Distance Bounded Dispatch Engine")
+    st.markdown("Deploying vehicles to far-off high-risk sectors can hurt response times across your overall network. This module tracks the distance from your central command base to each grid sector to optimize resource distribution.")
+    
+    # Operational Network Parameter Configuration Control Toggles
+    col_t1, col_t2, col_t3 = st.columns(3)
+    with col_t1:
+        fleet_pool = st.number_input("Available Personnel Units Pool", min_value=10, max_value=500, value=150)
+    with col_t2:
+        max_transit_cutoff = st.slider("Maximum Allowable Response Time Boundary (Minutes)", 5.0, 30.0, 15.0, step=1.0)
+    with col_t3:
+        road_speed_kmh = st.slider("Average Network Surface Velocity Rate (KM/H)", 20, 80, 45)
+
+    # 1. Compute Route Geodesics & Transit Times
+    transit_minutes_list = []
+    for idx, row in forecast_df.iterrows():
+        # Get raw meters using our Haversine function
+        meters = calculate_haversine_distance(hq_coords, hq_coords, row['Grid_Lat_Bin'], row['Grid_Lon_Bin'])
+        # Convert to minutes based on average speed (including a 1.4x traffic routing multiplier)
+        minutes = ((meters / 1000) / road_speed_kmh) * 60 * 1.4
+        transit_minutes_list.append(minutes)
+        
+    forecast_df['Transit_Time_Minutes'] = transit_minutes_list
+    
+    # 2. Linear Program Multi-Constraint Formulation Matrix
+    c = -forecast_df['Predicted_Volume'].values # Objective function: Maximize coverage
+    n_sectors = len(c)
+    
+    A_ub = [np.ones(n_sectors)] # Constraint 1: Global fleet limit constraint
+    b_ub = [fleet_pool]
+    
+    # Boundary Setup (0 <= x <= 15)
+    bounds = []
+    for idx, row in forecast_df.iterrows():
+        # Tactical Constraint: If transit time exceeds our threshold limit, block assignments to that cell
+        if row['Transit_Time_Minutes'] > max_transit_cutoff:
+            bounds.append((0, 0)) # Force assignment to zero units
+        else:
+            # Force units to cover vulnerable blind spots caused by sensor dropouts
+            lower_bound = 3 if row['Live_Observational_Status'] == "CRITICAL DEGRADED BLIND SPOT" else 0
+            bounds.append((lower_bound, 15))
+            
+    # Run the linear optimization solver
+    res = linprog(c, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method='highs')
+    
+    if res.success:
+        forecast_df['Transit_Optimized_Units'] = np.round(res.x).astype(int)
+        active_deployments = forecast_df[forecast_df['Transit_Optimized_Units'] > 0]
+        
+        # UI Performance Dashboard Block
+        col_g1, col_g2 = st.columns(2)
+        with col_g1:
+            fig_transit_bar = px.scatter(
+                forecast_df, x="Transit_Time_Minutes", y="Predicted_Volume", 
+                size="Transit_Optimized_Units", color="Live_Observational_Status",
+                title="Resource Allocation Matrix (Size represents units sent; boxes past the time cutoff are blocked)",
+                labels={'Transit_Time_Minutes': 'Calculated Response Time (Minutes)', 'Predicted_Volume': 'Risk Level'}
+            )
+            fig_transit_bar.add_vline(x=max_transit_cutoff, line_dash="dash", line_color="red", annotation_text="Response Cutoff Bound")
+            st.plotly_chart(fig_transit_bar, use_container_width=True)
+            
+        with col_g2:
+            st.markdown("### Tactical Strategy Audit")
+            st.write(f"✔️ **Fleet Budget Status:** {forecast_df['Transit_Optimized_Units'].sum()} / {fleet_pool} Units Active")
+            
+            blocked_sectors = len(forecast_df[forecast_df['Transit_Time_Minutes'] > max_transit_cutoff])
+            st.write(f"🛑 **Blocked High-Impedance Sectors (Too Far):** {blocked_sectors} grid coordinates out of reach.")
+            
+            st.dataframe(forecast_df[['Grid_Lat_Bin', 'Grid_Lon_Bin', 'Predicted_Volume', 'Transit_Time_Minutes', 'Transit_Optimized_Units']]
+
+.sort_values(by='Transit_Optimized_Units', ascending=False).head(5), use_container_width=True)
+else:
+st.error("Optimization configuration error. Time limits are too restrictive for current fleet minimum bounds. Increase the Maximum Response Time or drop down the safety minimums.")
+
+
+### 3. Core Engine Mechanics
+
+*   **Stochastic Degradation Loop (`Tab 1`)**: Instead of assuming all hardware works perfectly, this engine uses a probability threshold comparison loop (`np.random.uniform(0, 100) < failure_probability`) to simulate packet loss and signal drops. If active sensors fall offline around a high-risk area, the system instantly catches the disruption and updates the asset's status to `CRITICAL DEGRADED BLIND SPOT`.
+*   **Haversine Network Impedance Matrix (`Tab 2`)**: The platform uses the Haversine equation to calculate the true spherical distance between your central command base and target grid coordinates. It multiplies this distance by your average speed and a custom 1.4x traffic routing multiplier to estimate realistic drive times:
+    \[\text{Transit Minutes} = \left( \frac{\text{Distance KM}}{\text{Speed KM/H}} \times 60 \right) \times 1.4\]
+*   **Time-Bounded Matrix Boundaries**: If an area's calculated response time exceeds your `max_transit_cutoff`, the linear programming engine dynamically locks that sector's variable boundary to zero (`bounds.append((0, 0))`). This keeps resources focused within realistic operational ranges rather than chasing far-off target volumes.
+
+To adjust this framework for your specific production needs, let me know if you would like to **integrate real live Google Maps API network routing paths**, **add multi-base dispatch origins** (handling multiple precincts at once), or **build an auto-escalation alert system** for when critical hardware dropouts cluster together in the same sector.
+
+
+
