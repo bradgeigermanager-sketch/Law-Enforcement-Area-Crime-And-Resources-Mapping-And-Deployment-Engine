@@ -1,0 +1,171 @@
+To incorporate custom notification routing rules, we will add a Role-Based Access Control (RBAC) Escalation Matrix and a Targeted Dispatch Routing Engine to our platform's architecture.
+This update introduces a programmatic rule set that matches a sector's specific crime category and automated escalation tier to the exact capabilities, certifications, and device endpoints of active field roles (e.g., Tactical Response, Cyber Units, Infrastructure Engineers).
+## 1. Spatial Database Schema Expansion (PostgreSQL/PostGIS)
+We introduce tables to map operational roles, register responder capability profiles, and store dynamic routing conditions.
+
+-- NEW: Directory of authorized organizational roles and their primary device endpointsCREATE TABLE responder_roles (
+    role_id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    role_name VARCHAR(50) UNIQUE NOT NULL, -- e.g., 'TACTICAL_UNIT', 'CYBER_FORENSICS', 'INFRA_ENG'
+    assigned_precinct_id INT, 
+    dispatch_channel VARCHAR(20) CHECK (dispatch_channel IN ('TWILIO_SMS', 'SLACK_ALERT', 'MD_TERMINAL')),
+    endpoint_address VARCHAR(255) NOT NULL -- Cell number, webhook URL, or machine identifier
+);
+-- NEW: Rule engine matrix matching incident types to responder profilesCREATE TABLE notification_routing_rules (
+    rule_id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    trigger_category VARCHAR(50) NOT NULL, -- e.g., 'Violent', 'Cyber', 'Statutory/Regulatory'
+    min_escalation_tier VARCHAR(20) NOT NULL, -- e.g., 'TIER_2_REGIONAL', 'TIER_3_CRITICAL'
+    target_role_id INT REFERENCES responder_roles(role_id),
+    auto_escalate_on_sensor_failure BOOLEAN DEFAULT TRUE,
+    is_active BOOLEAN DEFAULT TRUE
+);
+CREATE INDEX idx_routing_rules ON notification_routing_rules(trigger_category, min_escalation_tier) WHERE is_active = TRUE;
+
+## 2. Full Unified UI Engine with Role-Based Capability Routing
+The updated code below integrates a complete Capabilities Routing Matrix. The engine parses each predicted crime sector, evaluates its compound infrastructure state, and dynamically assigns specific responder roles while generating tailored notification payloads.
+To execute this integrated system, update your app.py script and run streamlit run app.py:
+
+import streamlit as stimport pandas as pdimport numpy as npimport plotly.express as pximport plotly.graph_objects as gofrom sklearn.ensemble import RandomForestRegressorfrom datetime import datetimeimport json
+# 1. Advanced Spatio-Temporal & Organizational Mock Data Generator
+@st.cache_datadef load_enterprise_rbac_data():
+    np.random.seed(42)
+    center_lat, center_lon = 40.7128, -74.0060
+    categories = ['Property', 'Violent', 'Cyber', 'Statutory/Regulatory']
+    
+    # 3-Week Historical Baseline Logs Matrix
+    data = []
+    for week in range(3):
+        for _ in range(400):
+            lat_offset = np.random.normal(0, 0.015)
+            lon_offset = np.random.normal(0, 0.015)
+            data.append({
+                "Week_Index": week,
+                "Category": np.random.choice(categories),
+                "Latitude": center_lat + lat_offset,
+                "Longitude": center_lon + lon_offset,
+            })
+    df = pd.DataFrame(data)
+    
+    # Explicit Directory of Roles, Endpoints, and Operational Capabilities
+    role_directory = [
+        {"Role": "Tactical Assault Unit", "Code": "TACTICAL", "Channel": "MD_TERMINAL", "Endpoint": "TERM-OVR-09", "Capabilities": "High-risk containment, kinetic entry, physical arrest enforcement"},
+        {"Role": "Cyber Defenses Division", "Code": "CYBER", "Channel": "SLACK_ALERT", "Endpoint": "https://slack.com", "Capabilities": "Digital trace capture, vector mitigation, ledger audits"},
+        {"Role": "Municipal Enforcement", "Code": "MUNICIPAL", "Channel": "TWILIO_SMS", "Endpoint": "+1-555-901-2233", "Capabilities": "Regulatory compliance, traffic stop sweeps, misdemeanor tracking"},
+        {"Role": "Spatio-Infrastructure Team", "Code": "INFRA_ENG", "Channel": "SLACK_ALERT", "Endpoint": "https://slack.com", "Capabilities": "Sensor arrays diagnostic repair, camera line swap, packet recovery"}
+    ]
+    
+    return df, pd.DataFrame(role_directory)
+
+st.set_page_config(page_title="Capability Matrix Command Platform", layout="wide")
+st.title("⚖️ Role-Based Custom Notification & Capability Routing Engine")
+st.markdown("Automate precise resource dispatch matches based on legal violation categories and situational responder capabilities.")
+df, roles_df = load_enterprise_rbac_data()
+# ========================================================# BACKGROUND PROCESSING: RISK PREDICTION BINS GENERATOR# ========================================================
+df['Grid_Lat_Bin'] = df['Latitude'].round(2)
+df['Grid_Lon_Bin'] = df['Longitude'].round(2)grid_history = df.groupby(['Grid_Lat_Bin', 'Grid_Lon_Bin', 'Week_Index', 'Category']).size().reset_index(name='Count')features_df = grid_history.pivot(index=['Grid_Lat_Bin', 'Grid_Lon_Bin', 'Category'], columns='Week_Index', values='Count').fillna(0).reset_index()
+forecaster = RandomForestRegressor(n_estimators=15, random_state=42).fit(features_df[].values, features_df.values)
+features_df['Predicted_Volume'] = forecaster.predict(features_df[].values)forecast_df = features_df[features_df['Predicted_Volume'] > 1.0].copy()
+# --------------------------------------------------------# CORE RULE ENGINE: ROLE-BASED CAPABILITY ROUTING MATRIX# --------------------------------------------------------routing_roles = []dispatch_endpoints = []dispatch_channels = []escalation_tiers = []
+for idx, row in forecast_df.iterrows():
+    # 1. Evaluate Contextual Threat Tier Level
+    vol = row['Predicted_Volume']
+    cat = row['Category']
+    tier = "TIER_3_CRITICAL" if vol >= 7.0 else ("TIER_2_REGIONAL" if vol >= 3.5 else "TIER_1_LOCAL")
+    escalation_tiers.append(tier)
+    
+    # 2. Dynamic Routing Rule Set Verification Block
+    if tier == "TIER_3_CRITICAL" and cat == "Violent":
+        assigned = "TACTICAL"
+    elif cat == "Cyber":
+        assigned = "CYBER"
+    elif tier == "TIER_3_CRITICAL" or tier == "TIER_2_REGIONAL" and cat == "Property":
+        assigned = "TACTICAL"
+    elif cat == "Statutory/Regulatory" and tier != "TIER_3_CRITICAL":
+        assigned = "MUNICIPAL"
+    else:
+        assigned = "INFRA_ENG" # Default infrastructure maintenance routing assignment
+        
+    # Extract structural role variables from directory
+    matched_meta = roles_df[roles_df['Code'] == assigned].iloc
+    routing_roles.append(matched_meta['Role'])
+    dispatch_endpoints.append(matched_meta['Endpoint'])
+    dispatch_channels.append(matched_meta['Channel'])
+
+forecast_df['Assigned_Tier'] = escalation_tiers
+forecast_df['Assigned_Responder_Role'] = routing_roles
+forecast_df['Routing_Endpoint'] = dispatch_endpoints
+forecast_df['Routing_Channel'] = dispatch_channels
+# Render Workspace Interfacestab_roles, tab_engine = st.tabs(["📋 Responder Role Directory", "⚙️ Active Rule Routing Matrix"])
+# --------------------------------------------------------# WORKSPACE TAB 1: RESPONDER ROLE DIRECTORY# --------------------------------------------------------with tab_roles:
+    st.header("Authorized Organizational Roles & Capability Register")
+    st.markdown("This matrix catalogs active personnel units, assigned communications channels, and specialized hardware deployment capabilities.")
+    
+    st.dataframe(roles_df, use_container_width=True, hide_index=True)
+    
+    st.subheader("Capability Search Mirror")
+    selected_skill = st.text_input("Enter keywords to filter teams by operational certification capability (e.g., entry, trace, repair)", value="entry")
+    if selected_skill:
+        filtered_roles = roles_df[roles_df['Capabilities'].str.contains(selected_skill, case=False)]
+        st.dataframe(filtered_roles, use_container_width=True, hide_index=True)
+# --------------------------------------------------------# WORKSPACE TAB 2: ACTIVE RULE ROUTING MATRIX# --------------------------------------------------------with tab_engine:
+    st.header("Real-Time Variable Dispatch Routing Logs")
+    st.markdown("This engine analyzes next-week forecasts, automatically filters results by structural rules, and routes targeted payload warnings directly to the team certified to handle that exact threat type.")
+    
+    # Filter matrix by operational team
+    filter_role = st.selectbox("Isolate Active Queue by Assigned Responder Role", ["Show All System Roles"] + list(roles_df['Role'].unique()))
+    
+    plot_df = forecast_df if filter_role == "Show All System Roles" else forecast_df[forecast_df['Assigned_Responder_Role'] == filter_role]
+    
+    # Render KPI Summaries
+    rk1, rk2, rk3 = st.columns(3)
+    rk1.metric("Total Binned Anomalies", len(plot_df))
+    rk2.metric("Critical Tier 3 Dispatches", len(plot_df[plot_df['Assigned_Tier'] == "TIER_3_CRITICAL"]))
+    rk3.metric("Primary Comm Channel Mode", plot_df['Routing_Channel'].mode().values if not plot_df.empty else "None")
+    
+    # Interactive Map Visual
+    fig_rbac_map = px.scatter_mapbox(
+        plot_df, lat="Grid_Lat_Bin", lon="Grid_Lon_Bin",
+        size="Predicted_Volume", color="Assigned_Responder_Role",
+        color_discrete_sequence=px.colors.qualitative.Bold,
+        zoom=11.0, height=500, mapbox_style="carto-darkmatter",
+        title="Targeted Strategic Dispatches Mapped by Responder Core Competency"
+    )
+    st.plotly_chart(fig_rbac_map, use_container_width=True)
+    
+    # Generate Formatted Structured Payload JSON Packet Preview Block
+    st.subheader("Automated Custom Payload Packet Queue")
+    if not plot_df.empty:
+        sample_row = plot_df.sort_values(by='Predicted_Volume', ascending=False).iloc
+        
+        custom_payload = {
+            "routing_rule_id": "RULE_MATCH_AUTO_GEN",
+            "dispatch_timestamp": datetime.utcnow().isoformat() + "Z",
+            "target_role": sample_row['Assigned_Responder_Role'],
+            "communication_channel": sample_row['Routing_Channel'],
+            "destination_endpoint": sample_row['Routing_Endpoint'],
+            "alert_details": {
+                "grid_location": {"latitude": sample_row['Grid_Lat_Bin'], "longitude": sample_row['Grid_Lon_Bin']},
+                "violation_type_context": sample_row['Category'],
+                "projected_incident_volume": round(sample_row['Predicted_Volume'], 2),
+                "severity_classification": sample_row['Assigned_Tier']
+            },
+            "required_capability_clearance": roles_df[roles_df['Role'] == sample_row['Assigned_Responder_Role']].iloc['Capabilities']
+        }
+        
+        st.markdown(f"**Target Notification Packet for {sample_row['Assigned_Responder_Role']} via `{sample_row['Routing_Channel']}`**")
+        st.code(json.dumps(custom_payload, indent=2), language="json")
+    else:
+        st.info("No logs match the current role criteria selection filter.")
+
+## 3. Operational Mechanics
+
+* Capability-Driven Routing Filters (Section 2): Replaces simple geographical broadcasting with targeted role assignment logic. The system analyzes incoming crime data vectors (Category, Predicted_Volume) against a structural role index matrix to match events to the correct responder tier:
+
+if tier == "TIER_3_CRITICAL" and cat == "Violent":
+    assigned_role = "Tactical Assault Unit"elif cat == "Cyber":
+    assigned_role = "Cyber Defenses Division"
+
+* Dynamic JSON Payload Customization: Outbound alert packets are customized on the fly to include the precise required_capability_clearance for each specific team. This ensures that field personnel receive critical context—such as exact grid coordinates, risk indexes, and authorized enforcement parameters—directly on their device terminals.
+
+To finalize this capability-routing framework for your environment, let me know if you would like to integrate live shift schedule timetables (to route alerts based on which team is currently on or off duty), build a fallback chain (e.g., route to Municipal if Tactical is busy), or add cryptographic digital signature fields to verify the payload transmission.
+
+
